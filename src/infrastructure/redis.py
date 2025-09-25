@@ -113,9 +113,12 @@ class RedisCache:
             if not self.redis:
                 return False
                 
-            keys = await self.redis.keys("search:*")
-            if keys:
-                await self.redis.delete(*keys)
+            keys_to_delete = []
+            async for key in self.redis.scan_iter(match="search:*"):
+                keys_to_delete.append(key)
+
+            if keys_to_delete:
+                await self.redis.delete(*keys_to_delete)
             return True
         except Exception as e:
             logger.error(f"Failed to invalidate search cache: {e}")

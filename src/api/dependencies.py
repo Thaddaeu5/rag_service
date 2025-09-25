@@ -8,6 +8,7 @@ from src.services.vector_search import VectorSearchService
 from src.services.bm25_search import BM25SearchService
 from src.services.reranking import RerankingService
 from src.services.hybrid_search import HybridSearchService
+from src.services.batch_embedding import BatchEmbeddingService
 from src.repositories.document_repository import DocumentRepository
 from src.repositories.embedding_cache_repository import EmbeddingCacheRepository
 
@@ -35,7 +36,8 @@ def get_ingestion_service() -> IngestionService:
     doc_repo = get_document_repository()
     embedding_service = get_embedding_service()
     chunking_service = get_chunking_service()
-    return IngestionService(doc_repo, embedding_service, chunking_service)
+    bm25_service = get_bm25_search_service()
+    return IngestionService(doc_repo, embedding_service, chunking_service, bm25_service)
 
 # Search services
 @lru_cache()
@@ -65,3 +67,8 @@ def get_hybrid_search_service() -> HybridSearchService:
         reranking_service,
         embedding_service
     )
+
+@lru_cache()
+def get_batch_embedding_service() -> BatchEmbeddingService:
+    cache_repo = get_embedding_cache_repository()
+    return BatchEmbeddingService(cache_repo)

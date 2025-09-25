@@ -9,8 +9,9 @@ from src.core.models import SearchRequest, SearchResponse
 from src.core.config import settings
 from src.api.dependencies import get_hybrid_search_service
 from src.services.hybrid_search import HybridSearchService
+from src.api.security import require_jwt
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_jwt)])
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 

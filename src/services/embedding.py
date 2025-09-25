@@ -69,7 +69,7 @@ class EmbeddingService:
         self, 
         texts: List[str], 
         use_cache: bool = True,
-        use_batch_api: bool = None,
+        use_batch_api: bool = False,
         batch_threshold: int = 50
     ) -> List[List[float]]:
         """Generate embeddings for multiple documents.
@@ -84,10 +84,7 @@ class EmbeddingService:
             return []
 
         # Decide whether to use batch API
-        should_use_batch = (
-            use_batch_api is True or 
-            (use_batch_api is None and len(texts) >= batch_threshold)
-        )
+        should_use_batch = use_batch_api and len(texts) >= batch_threshold
         
         if should_use_batch:
             logger.info(f"Using OpenAI Batch API for {len(texts)} texts (50% cost savings)")

@@ -1,7 +1,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
-from typing import Optional
+from typing import Optional, List
 import os
+from urllib.parse import quote
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -14,12 +15,19 @@ class Settings(BaseSettings):
     # API
     api_prefix: str = "/api/v1"
     cors_origins: str = Field(default="*", alias="CORS_ORIGINS")
+    allowed_hosts: str = Field(default="localhost,127.0.0.1", alias="ALLOWED_HOSTS")
 
     # OpenAI
     openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
     embedding_model: str = "text-embedding-3-large"
     embedding_dim: int = 3072
     openai_timeout: int = 60
+
+    # Auth
+    jwt_secret: str = Field(..., alias="JWT_SECRET")
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_audience: Optional[str] = Field(default=None, alias="JWT_AUDIENCE")
+    jwt_issuer: Optional[str] = Field(default=None, alias="JWT_ISSUER")
 
     # Database
     postgres_user: str = Field(..., alias="POSTGRES_USER")
@@ -48,11 +56,22 @@ class Settings(BaseSettings):
         
         # Add authentication if password exists
         if self.redis_password:
-            auth = f":{self.redis_password}@"
+            auth = f":{quote(self.redis_password, safe='')}@"
         else:
             auth = ""
         
         return f"{protocol}://{auth}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+    @property
+    def cors_origin_list(self) -> List[str]:
+        if not self.cors_origins or self.cors_origins.strip() == "*":
+            return ["*"]
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def trusted_hosts(self) -> List[str]:
+        hosts = [host.strip() for host in self.allowed_hosts.split(",") if host.strip()]
+        return hosts or ["localhost", "127.0.0.1"]
     
     # Search Configuration
     enable_bm25: bool = True

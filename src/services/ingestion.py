@@ -8,6 +8,7 @@ from src.services.chunking import ChunkingService
 from src.repositories.document_repository import DocumentRepository
 from src.infrastructure.redis import redis_cache
 import logging
+from src.services.bm25_search import BM25SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +17,34 @@ class IngestionService:
         self,
         document_repo: DocumentRepository,
         embedding_service: EmbeddingService,
-        chunking_service: ChunkingService
+        chunking_service: ChunkingService,
+        bm25_service: Optional[BM25SearchService] = None
     ):
         self.document_repo = document_repo
         self.embedding_service = embedding_service
         self.chunking_service = chunking_service
+        self.bm25_service = bm25_service
+        self._bm25_rebuild_lock: Optional[asyncio.Lock] = asyncio.Lock() if bm25_service else None
+        self._bm25_rebuild_task: Optional[asyncio.Task] = None
+
+    async def _schedule_bm25_rebuild(self):
+        """Schedule a BM25 index rebuild without blocking the request flow."""
+        if not self.bm25_service:
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop (e.g., during testing); rebuild synchronously.
+            await self.bm25_service.build_index()
+            return
+
+        assert self._bm25_rebuild_lock is not None
+        async with self._bm25_rebuild_lock:
+            if self._bm25_rebuild_task and not self._bm25_rebuild_task.done():
+                return
+
+            self._bm25_rebuild_task = loop.create_task(self.bm25_service.build_index())
 
     async def ingest_document(
         self,
@@ -73,6 +97,7 @@ class IngestionService:
             await redis_cache.invalidate_search_cache()
 
             logger.info(f"Successfully ingested document into {len(created_documents)} chunks")
+            await self._schedule_bm25_rebuild()
             return created_documents
 
         except Exception as e:
@@ -115,6 +140,8 @@ class IngestionService:
             await redis_cache.invalidate_search_cache()
             
             logger.info(f"Successfully ingested {len(created_documents)} documents with pre-computed embeddings")
+            if created_documents:
+                await self._schedule_bm25_rebuild()
             return created_documents
             
         except Exception as e:
@@ -163,6 +190,8 @@ class IngestionService:
                 continue
 
         logger.info(f"Batch ingestion completed: {len(all_created)} total documents created")
+        if all_created:
+            await self._schedule_bm25_rebuild()
         return all_created
 
     async def update_document(
@@ -196,6 +225,7 @@ class IngestionService:
                 # Invalidate search caches
                 await redis_cache.invalidate_search_cache()
                 logger.info(f"Updated document {document_id}")
+                await self._schedule_bm25_rebuild()
 
             return updated
 
@@ -212,6 +242,7 @@ class IngestionService:
                 # Invalidate search caches
                 await redis_cache.invalidate_search_cache()
                 logger.info(f"Deleted document {document_id}")
+                await self._schedule_bm25_rebuild()
 
             return success
 

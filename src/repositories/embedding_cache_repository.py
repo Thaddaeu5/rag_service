@@ -91,10 +91,11 @@ class EmbeddingCacheRepository:
             try:
                 query = """
                 DELETE FROM embedding_cache
-                WHERE last_accessed < NOW() - INTERVAL '%s days' AND access_count < 5
+                WHERE last_accessed < NOW() - ($1::interval) AND access_count < 5
                 """
-                
-                result = await conn.execute(query % days)
+
+                interval_value = f"{days} days"
+                result = await conn.execute(query, interval_value)
                 deleted_count = int(result.split()[-1]) if result else 0
                 
                 logger.info(f"Cleaned up {deleted_count} old cached embeddings")

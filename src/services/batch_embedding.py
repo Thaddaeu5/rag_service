@@ -39,6 +39,18 @@ class BatchEmbeddingService:
         # Store active batches in memory (in production, use Redis or DB)
         self._active_batches: Dict[str, Dict[str, Any]] = {}
 
+    def attach_original_documents(
+        self, job_id: str, documents: List[Dict[str, Any]]
+    ) -> None:
+        """Attach original documents metadata to a tracked batch job."""
+
+        job_info = self._active_batches.get(job_id)
+        if not job_info:
+            logger.warning("Attempted to attach documents to unknown batch job %s", job_id)
+            return
+
+        job_info["original_documents"] = documents
+
     async def create_batch_embedding_job(
         self,
         texts: List[str],
@@ -140,13 +152,15 @@ class BatchEmbeddingService:
                 "uncached_requests": len(uncached_texts),
                 "text_to_index": text_to_index,
                 "cached_results": cached_results,
-                "use_cache": use_cache
+                "use_cache": use_cache,
+                "texts": texts,
+                "uncached_texts": uncached_texts,
             }
-            
+
             self._active_batches[job_id] = job_info
-            
+
             logger.info(f"Created batch job {job_id} with batch_id {batch_job.id}")
-            
+
             return {
                 "job_id": job_id,
                 "batch_id": batch_job.id,
@@ -236,7 +250,7 @@ class BatchEmbeddingService:
             raise ValueError(f"Job {job_id} not found")
         
         job_info = self._active_batches[job_id]
-        
+
         # If job was completed using only cache
         if job_info["uncached_requests"] == 0:
             embeddings = [job_info["cached_results"][i] for i in range(job_info["total_requests"])]
@@ -254,7 +268,11 @@ class BatchEmbeddingService:
             
             # Download results
             result_file = await self.client.files.content(batch.output_file_id)
-            result_content = result_file.read().decode('utf-8')
+            if hasattr(result_file, "aread"):
+                result_bytes = await result_file.aread()
+            else:
+                result_bytes = await result_file.read()
+            result_content = result_bytes.decode('utf-8')
             
             # Parse results
             batch_results = {}
@@ -269,9 +287,18 @@ class BatchEmbeddingService:
                         batch_results[batch_index] = embedding
                         
                         # Cache the result
-                        if job_info["use_cache"]:
-                            original_index = job_info["text_to_index"][batch_index]
-                            # We don't have the original text here, but we could store it in job_info if needed
+                        if job_info.get("use_cache") and "text_to_index" in job_info:
+                            original_index = job_info["text_to_index"].get(batch_index)
+                            texts = job_info.get("texts", [])
+                            if (
+                                original_index is not None
+                                and 0 <= original_index < len(texts)
+                            ):
+                                await self.cache_repo.cache_embedding(
+                                    texts[original_index],
+                                    embedding,
+                                    settings.embedding_model,
+                                )
                     else:
                         logger.error(f"Failed result for custom_id {custom_id}: {result.get('error')}")
                         # Use zero vector as fallback

@@ -12,11 +12,16 @@ if TYPE_CHECKING:
 
 from src.core.models import Document, DocumentCreateRequest, DocumentUpdateRequest
 from src.core.config import settings
-from src.api.dependencies import get_ingestion_service, get_document_repository
+from src.api.dependencies import (
+    get_batch_embedding_service,
+    get_document_repository,
+    get_ingestion_service,
+)
 from src.services.ingestion import IngestionService
 from src.repositories.document_repository import DocumentRepository
+from src.api.security import require_jwt
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_jwt)])
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
@@ -24,15 +29,12 @@ limiter = Limiter(key_func=get_remote_address)
 async def poll_and_complete_batch(
     job_id: str,
     original_documents: List[Dict[str, Any]],
-    batch_service,  # BatchEmbeddingService instance
+    batch_service: "BatchEmbeddingService",
+    ingestion_service: IngestionService,
     correlation_id: str = "unknown"
 ):
     """Background task to poll batch status and complete automatically."""
     try:
-        from src.api.dependencies import get_ingestion_service
-
-        ingestion_service = get_ingestion_service()
-
         logger.info(f"Starting background polling for batch job {job_id} [{correlation_id}]")
 
         max_attempts = 480  # 4 hours with 30s intervals
@@ -281,7 +283,8 @@ async def create_batch_job(
     background_tasks: BackgroundTasks,
     doc_requests: List[DocumentCreateRequest],
     use_batch_api: bool = True,
-    ingestion_service: IngestionService = Depends(get_ingestion_service)
+    ingestion_service: IngestionService = Depends(get_ingestion_service),
+    batch_service: "BatchEmbeddingService" = Depends(get_batch_embedding_service)
 ):
     """Create a batch processing job for multiple documents using OpenAI Batch API."""
     correlation_id = getattr(request.state, 'correlation_id', 'unknown')
@@ -302,12 +305,8 @@ async def create_batch_job(
         logger.info(f"Creating batch job for {len(doc_requests)} documents [{correlation_id}]")
 
         from src.services.chunking import ChunkingService
-        from src.services.batch_embedding import BatchEmbeddingService
-        from src.api.dependencies import get_embedding_cache_repository
 
         chunking_service = ChunkingService()
-        cache_repo = get_embedding_cache_repository()
-        batch_service = BatchEmbeddingService(cache_repo)
 
         # Chunk all documents consistently (single pass with metadata)
         all_texts = []
@@ -333,8 +332,8 @@ async def create_batch_job(
         job_info = await batch_service.create_batch_embedding_job(all_texts)
 
         # Store original documents in the batch service for later retrieval
-        if job_info["job_id"] in batch_service._active_batches:
-            batch_service._active_batches[job_info["job_id"]]["original_documents"] = chunk_documents
+        batch_service.attach_original_documents(job_info["job_id"], chunk_documents)
+        job_info["original_documents"] = chunk_documents
 
         # If job is already completed (all cached), process immediately
         if job_info["status"] == "completed":
@@ -365,6 +364,7 @@ async def create_batch_job(
             job_info["job_id"],
             chunk_documents,
             batch_service,
+            ingestion_service,
             correlation_id
         )
 
@@ -395,18 +395,13 @@ async def create_batch_job(
 async def complete_batch_job(
     job_id: str,
     request: Request,
-    ingestion_service: IngestionService = Depends(get_ingestion_service)
+    ingestion_service: IngestionService = Depends(get_ingestion_service),
+    batch_service: "BatchEmbeddingService" = Depends(get_batch_embedding_service)
 ):
     """Complete a batch job by storing documents with their embeddings."""
     correlation_id = getattr(request.state, 'correlation_id', 'unknown')
     
     try:
-        from src.services.batch_embedding import BatchEmbeddingService
-        from src.api.dependencies import get_embedding_cache_repository
-        
-        cache_repo = get_embedding_cache_repository()
-        batch_service = BatchEmbeddingService(cache_repo)
-        
         # Check if job is completed
         status_info = await batch_service.get_batch_status(job_id)
         if status_info["status"] != "completed":
@@ -455,17 +450,16 @@ async def complete_batch_job(
 @router.get("/batch-job/{job_id}")
 async def get_batch_job_status(
     job_id: str,
-    request: Request
+    request: Request,
+    batch_service: "BatchEmbeddingService" = Depends(get_batch_embedding_service)
 ):
     """Get the status of a batch processing job."""
     correlation_id = getattr(request.state, 'correlation_id', 'unknown')
     
     try:
-        from src.services.batch_embedding import BatchEmbeddingService
         from src.api.dependencies import get_embedding_cache_repository
         
         cache_repo = get_embedding_cache_repository()
-        batch_service = BatchEmbeddingService(cache_repo)
         
         status_info = await batch_service.get_batch_status(job_id)
 
